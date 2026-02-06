@@ -36,8 +36,8 @@ const yearSlider = document.getElementById("year-slider");
 const yearValueLabel = document.getElementById("year-value");
 
 noUiSlider.create(yearSlider, {
-  start: [1700, 2026],   // Startwerte
-  connect: true,         // Füllung zwischen Griffen
+  start: [1700, 2026],
+  connect: true,
   step: 1,
   range: {
     min: 1500,
@@ -57,6 +57,7 @@ let allFeatures = [];
 fetch("http://localhost:3000/api/maps")
   .then(res => res.json())
   .then(data => {
+    console.log("Anzahl Karten vom Server:", data.length);
     data.forEach(item => {
       const extent = ol.proj.transformExtent(
         [item.west, item.sued, item.ost, item.nord],
@@ -75,45 +76,44 @@ fetch("http://localhost:3000/api/maps")
     });
 
     vectorSource.addFeatures(allFeatures);
-  });
+    applyFilters();
+  }).catch(err => console.error("Fehler beim Laden der Karten:", err));
 
 
 // --- Filter Funktion ---
-    function applyFilters() {
-        const filterText = document.getElementById("filter-input").value.toLowerCase();
-        const sliderValues = yearSlider.noUiSlider.get().map(Number); // [min, max]
-        const minYear = sliderValues[0];
-        const maxYear = sliderValues[1];
+function applyFilters() {
+    const filterText = document.getElementById("filter-input").value.toLowerCase();
+    const sliderValues = yearSlider.noUiSlider.get().map(Number);
+    const minYear = sliderValues[0];
+    const maxYear = sliderValues[1];
 
-        yearValueLabel.textContent = `${minYear} - ${maxYear}`;
+    yearValueLabel.textContent = `${minYear} - ${maxYear}`;
 
-        let visibleCount = 0;
+    let visibleCount = 0;
 
-        allFeatures.forEach(f => {
-            const jahr = f.get("jahr");
-            const titel = f.get("titel").toLowerCase();
+    allFeatures.forEach(f => {
+        const jahr = f.get("jahr");
+        const titel = f.get("titel").toLowerCase();
 
-            const visible =
-            jahr >= minYear &&
-            jahr <= maxYear &&
-            titel.includes(filterText);
+        const visible =
+        jahr >= minYear &&
+        jahr <= maxYear &&
+        titel.includes(filterText);
 
-            f.setStyle(visible ? null : new ol.style.Style(null));
+        f.setStyle(visible ? null : new ol.style.Style(null));
 
-            if (visible) visibleCount++;
-        });
+        if (visible) visibleCount++;
+    });
 
-        // Counter aktualisieren
-        document.getElementById("counter").textContent = `${visibleCount} / ${allFeatures.length}`;
-    }
-
+    // Counter aktualisieren
+    document.getElementById("counter").textContent = `${visibleCount} / ${allFeatures.length}`;
+}
 
 // Slider: reagiert auf Update
 yearSlider.noUiSlider.on("update", applyFilters);
 
 // Textinput: reagiert auf Eingabe
 document.getElementById("filter-input").addEventListener("input", applyFilters);
-
 
 
 // Hover-Effekt
@@ -141,17 +141,17 @@ map.on("pointermove", function (evt) {
 });
 
 const popupElement = document.createElement("div");
-popupElement.className = "popup";
-popupElement.style.background = "white";
-popupElement.style.padding = "5px";
-popupElement.style.border = "1px solid black";
-popupElement.style.borderRadius = "5px";
+  popupElement.className = "popup";
+  popupElement.style.background = "white";
+  popupElement.style.padding = "5px";
+  popupElement.style.border = "1px solid black";
+  popupElement.style.borderRadius = "5px";
 
 const overlay = new ol.Overlay({
   element: popupElement,
   positioning: "bottom-center",
   stopEvent: false,
-  offset: [0, -10] // etwas oberhalb des Klicks
+  offset: [0, -10]
 });
 
 map.addOverlay(overlay);
