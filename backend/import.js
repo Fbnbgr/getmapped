@@ -1,16 +1,23 @@
 import fs from "fs";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const dbPath = path.join(__dirname, "data/maps.db");
 
 const db = await open({
-  filename: "./maps.db",
+  filename: dbPath,
   driver: sqlite3.Database
 });
 
 await db.exec(`
   CREATE TABLE IF NOT EXISTS maps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    idn TEXT,
+    idn TEXT UNIQUE,
     titel TEXT,
     jahr INTEGER,
     massstab TEXT,
@@ -21,7 +28,14 @@ await db.exec(`
   )
 `);
 
-const csv = fs.readFileSync("./daten.csv", "utf-8");
+const csvPath = path.join(__dirname, "daten.csv");
+if (!fs.existsSync(csvPath)) {
+  console.error("CSV nicht gefunden:", csvPath);
+  process.exit(1);
+}
+
+const csv = fs.readFileSync(csvPath, "utf-8");
+
 const lines = csv.split("\n").slice(1); // Header überspringen
 
 for (const line of lines) {
@@ -37,11 +51,11 @@ for (const line of lines) {
   const sued = Number(parts.find(p => p.startsWith("d")).slice(1));
 
   await db.run(
-    `INSERT INTO maps (idn, titel, jahr, massstab, west, ost, nord, sued)
+    `INSERT OR IGNORE INTO maps (idn, titel, jahr, massstab, west, ost, nord, sued)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [idn, titel, jahr, massstab, west, ost, nord, sued]
   );
 }
 
-console.log("✅ Import fertig");
+console.log("Import fertig");
 process.exit(0);
