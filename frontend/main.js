@@ -69,7 +69,8 @@ fetch("http://localhost:3000/api/maps")
         geometry: ol.geom.Polygon.fromExtent(extent),
         titel: item.titel,
         jahr: item.jahr,
-        idn: item.idn
+        idn: item.idn,
+        massstab: item.massstab
       });
 
       allFeatures.push(feature);
