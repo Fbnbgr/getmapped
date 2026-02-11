@@ -1,0 +1,9 @@
+# Ignore large data files so Docker build context stays small
+data/
+backend/data/
+
+# Ignore common large RDF formats that shouldn't be in the build context
+*.nt
+*.ttl
+*.hdt
+*.hdt.index

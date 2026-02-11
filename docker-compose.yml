@@ -10,3 +10,10 @@ services:
       - ./backend/data:/app/backend/data
       - ./backend/daten.csv:/app/backend/daten.csv
     restart: unless-stopped
+
+  fuseki-hdt:
+    image: 'rogargon/fuseki-hdt-docker:latest'
+    ports:
+        - '3030:3030'
+    volumes:
+        - './data/dnb-all.hdt:/data/dataset.hdt:ro'

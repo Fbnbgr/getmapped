@@ -1,4 +1,4 @@
-# Ignore all files in the data directory (large HDT files)
+# Ignore all files in the data directory
 data/*
 
 # Allow a placeholder so the empty directory can be kept in the repo if desired
