@@ -66,8 +66,8 @@ Parameter:
 
 Die Anwendung importiert zwei CSV-Dateien aus dem Backend-Ordner:
 
-- [backend/kartendaten.csv](backend/kartendaten.csv) für Kartenflächen
-- [backend/punktdaten.csv](backend/punktdaten.csv) für Punktmarker
+- [backend/data/kartendaten.csv](backend/kartendaten.csv) für Kartenflächen
+- [backend/data/punktdaten.csv](backend/punktdaten.csv) für Punktmarker
 
 ### Karten-CSV-Format
 

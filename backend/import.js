@@ -53,7 +53,7 @@ function parseCoordinate(value) {
 }
 
 async function importMaps() {
-  const csvPath = path.join(__dirname, "kartendaten.csv");
+  const csvPath = path.join(__dirname, "data/kartendaten.csv");
   if (!fs.existsSync(csvPath)) {
     console.error("CSV nicht gefunden:", csvPath);
     process.exit(1);
@@ -88,7 +88,7 @@ async function importMaps() {
 }
 
 async function importPoints() {
-  const csvPath = path.join(__dirname, "punktdaten.csv");
+  const csvPath = path.join(__dirname, "data/punktdaten.csv");
   if (!fs.existsSync(csvPath)) {
     console.error("CSV nicht gefunden:", csvPath);
     process.exit(1);

@@ -13,8 +13,6 @@ WORKDIR /app
 
 COPY --from=builder /app/backend/node_modules ./backend/node_modules
 COPY backend ./backend
-COPY backend/kartendaten.csv ./backend/kartendaten.csv
-COPY backend/punktdaten.csv ./backend/punktdaten.csv
 COPY frontend ./frontend
 
 RUN chmod +x backend/start.sh
