@@ -1,52 +1,55 @@
-# Kartenprojekt - Maps Application (main)
+# Kartenprojekt - Maps Application
 
-Eine interaktive Kartenverwaltungs-Web-Anwendung mit Node.js Backend und SQLite-Datenbank.
+Eine interaktive Karten-Anwendung mit OpenStreetMap, Kartenflächen aus historischen Kartendaten und zusätzlichen Punktmarkern für Orts- oder Objektinformationen.
 
 ## Features
 
-- **Interaktive Karte** (Frontend HTML/CSS/JS)
-- **REST API** für Kartendaten (Node.js/Express)
-- **SQLite Datenbank** für strukturierte Kartendaten
-- **Docker Setup** für einfaches Deployment
-- **CSV Import** von Kartendaten
+- Interaktive OpenStreetMap-Karte im Frontend
+- Darstellung historischer Kartenflächen als Overlays
+- Zusätzliche Punktmarker in Form klassischer Nadeln
+- Filterung nach Jahr und Titeln
+- Popups mit Metadaten und Link zum Online-Katalog
+- REST-API für Karten- und Punktdaten
+- CSV-Import in eine SQLite-Datenbank
 
 ## Schnellstart
 
 ### Voraussetzungen
 
 - Docker & Docker Compose
-- oder: Node.js 16+, SQLite3
+- oder: Node.js 18+, npm
 
 ### Mit Docker
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-Die App ist verfügbar unter: **http://localhost:3000**
+Die App ist dann verfügbar unter: http://localhost:3000
 
 ### Lokal (ohne Docker)
 
 ```bash
-# Backend-Dependencies installieren
 cd backend
 npm install
-
-# Kartendaten importieren (CSV → SQLite)
-npm run import
-
-# Server starten
-npm start
+node import.js
+node server.js
 ```
 
-Dann öffne: **http://localhost:3000**
+Danach öffne: http://localhost:3000
 
 ## API-Endpoints
 
-### Maps abrufen
+### Karten abrufen
 
 ```bash
 GET /api/maps
+```
+
+### Punkte abrufen
+
+```bash
+GET /api/points
 ```
 
 ### Nach Jahrbereich filtern
@@ -56,62 +59,85 @@ GET /api/maps/by-year?from=1800&to=1850
 ```
 
 Parameter:
-- `from`: Startjahr (optional)
-- `to`: Endjahr (optional)
+- `from`: Startjahr
+- `to`: Endjahr
 
-## Datenstruktur
+## Datenquellen
 
-### Kartendataset (maps.db)
+Die Anwendung importiert zwei CSV-Dateien aus dem Backend-Ordner:
+
+- [backend/kartendaten.csv](backend/kartendaten.csv) für Kartenflächen
+- [backend/punktdaten.csv](backend/punktdaten.csv) für Punktmarker
+
+### Karten-CSV-Format
+
+```text
+idn;koord;massstab;jahr;titel
+1931734666;$a13.68$b13.89$c51.12$d51.01;1:25000;1890;Topographische Karte Dresden
+```
+
+Koordinatenformat:
+- `$a<west>$b<ost>$c<nord>$d<sued>`
+- Die Reihenfolge der Felder kann variieren, solange die Unterfelder korrekt zugeordnet sind.
+
+### Punkt-CSV-Format
+
+```text
+idn;Breitengrad;Längengrad;Titel
+1882034147;S4.10;O144.52;Die Nubia-Awar an der Hansa-Bucht in Nordost-Neuguinea
+```
+
+Die Werte werden in die Datenbank als Breitengrad und Längengrad übernommen und als Marker auf der Karte dargestellt.
+
+## Datenbankstruktur
+
+### Tabelle `maps`
 
 ```sql
 CREATE TABLE maps (
-  id INTEGER PRIMARY KEY,
-  idn TEXT UNIQUE,              -- DNB Identifier
-  titel TEXT,                   -- Kartentitel
-  jahr INTEGER,                 -- Erscheinungsjahr
-  massstab TEXT,                -- Maßstab
-  west REAL,                    -- Längengradwest
-  ost REAL,                     -- Längengradost
-  nord REAL,                    -- Breitengradnord
-  sued REAL                     -- Breitegradsüd
-)
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  idn TEXT UNIQUE,
+  titel TEXT,
+  jahr INTEGER,
+  massstab TEXT,
+  west REAL,
+  ost REAL,
+  nord REAL,
+  sued REAL
+);
 ```
 
-### CSV-Format (Eingabe)
+### Tabelle `points`
 
+```sql
+CREATE TABLE points (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  idn TEXT UNIQUE,
+  titel TEXT,
+  breitengrad REAL,
+  laengengrad REAL
+);
 ```
-idn;koord;massstab;jahr;titel
-112946167X;$a12.34$b13.45$c52.1$d51.2;1:100000;1850;Karte Leipzig
-```
-
-Koordinaten-Format: `$a<west>$b<ost>$c<nord>$d<sued>`, wobei die Reihenfolge nicht eingehalten werden muss solange die Unterfelder richtig zugeordnet sind
 
 ## Projektstruktur
 
-```
-kartenprojekt/
+```text
+getmapped/
 ├── backend/
-│   ├── server.js              # Express API
 │   ├── import.js              # CSV → SQLite Importer
-│   ├── daten.csv              # Eingabedaten
-│   ├── data/
-│   │   └── maps.db            # SQLite Datenbank
-│   ├── package.json           # Dependencies
-│   └── start.sh               # Linux Startup Script
+│   ├── server.js              # Express-Backend und API
+│   ├── kartendaten.csv        # Karten-Daten
+│   ├── punktdaten.csv        # Punkt-Daten
+│   ├── package.json           # Abhängigkeiten
+│   └── data/
+│       └── maps.db            # SQLite-Datenbank
 ├── frontend/
 │   ├── index.html             # Hauptseite
-│   ├── main.js                # JavaScript Logic
+│   ├── main.js                # Kartenlogik, Filter und Popups
 │   └── style.css              # Styling
-├── docker-compose.yml         # Docker Setup
-├── Dockerfile                 # Image Definition
+├── docker-compose.yml         # Docker-Setup
+├── Dockerfile                 # Image-Definition
 └── README.md                  # Diese Datei
-```
-
-## Umgebungsvariablen
-
-```bash
-PORT=3000                   # Server Port
-NODE_ENV=production         # Umgebung
 ```
 
 ## Troubleshooting
@@ -119,65 +145,32 @@ NODE_ENV=production         # Umgebung
 ### Port 3000 ist bereits belegt
 
 ```bash
-docker-compose down         # Container stoppen
+docker compose down
 # oder lokal
-lsof -i :3000              # Process finden
-kill -9 <PID>              # Prozess beenden
+lsof -i :3000
+kill -9 <PID>
 ```
 
-### CSV-Import fehlgeschlagen
+### Import fehlgeschlagen
 
 ```bash
-# Dateiformat prüfen
-cat backend/daten.csv
-
-# Manueller Re-Import
-cd backend && npm run import
+cd backend
+node import.js
 ```
 
-### Datenbankfehler
+### Datenbank neu aufbauen
 
 ```bash
-# SQLite Datei löschen (wird neu erstellt)
-rm backend/data/maps.db
-npm run import
+cd backend
+rm -f data/maps.db
+node import.js
 ```
 
 ## Deployment
 
-### Mit Docker (empfohlen)
-
 ```bash
-docker-compose build
-docker-compose up -d
-```
-
-### Systemd Service (Linux)
-
-```bash
-# /etc/systemd/system/kartenprojekt.service
-[Unit]
-Description=Kartenprojekt Maps App
-After=docker.service
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/docker-compose -f /path/to/docker-compose.yml up
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-## Entwicklung
-
-```bash
-# Backend testen
-cd backend
-npm test
-
-# Live reload (mit nodemon)
-npm run dev
+docker compose build
+docker compose up -d
 ```
 
 ## Lizenz

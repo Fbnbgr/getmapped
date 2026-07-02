@@ -25,37 +25,98 @@ await db.exec(`
     ost REAL,
     nord REAL,
     sued REAL
+  );
+
+  CREATE TABLE IF NOT EXISTS points (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idn TEXT UNIQUE,
+    titel TEXT,
+    breitengrad REAL,
+    laengengrad REAL
   )
 `);
 
-const csvPath = path.join(__dirname, "daten.csv");
-if (!fs.existsSync(csvPath)) {
-  console.error("CSV nicht gefunden:", csvPath);
-  process.exit(1);
+function parseCoordinate(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+
+  const direction = text[0];
+  const numeric = Number.parseFloat(text.slice(1));
+
+  if (Number.isNaN(numeric)) return null;
+
+  if (direction === "S" || direction === "W") {
+    return -numeric;
+  }
+
+  return numeric;
 }
 
-const csv = fs.readFileSync(csvPath, "utf-8");
+async function importMaps() {
+  const csvPath = path.join(__dirname, "kartendaten.csv");
+  if (!fs.existsSync(csvPath)) {
+    console.error("CSV nicht gefunden:", csvPath);
+    process.exit(1);
+  }
 
-const lines = csv.split("\n").slice(1); // Header überspringen
+  const csv = fs.readFileSync(csvPath, "utf-8");
+  const lines = csv.split(/\r?\n/).slice(1);
 
-for (const line of lines) {
-  if (!line.trim()) continue;
+  for (const line of lines) {
+    if (!line.trim()) continue;
 
-  const [idn, koord, massstab, jahr, titel] = line.split(";");
+    const [idn, koord, massstab, jahr, titel] = line.split(";");
+    if (!idn || !koord) continue;
 
-  // Format: $a12.34$b13.45$c52.1$d51.2
-  const parts = koord.split("$").filter(Boolean);
-  const west = Number(parts.find(p => p.startsWith("a")).slice(1));
-  const ost  = Number(parts.find(p => p.startsWith("b")).slice(1));
-  const nord = Number(parts.find(p => p.startsWith("c")).slice(1));
-  const sued = Number(parts.find(p => p.startsWith("d")).slice(1));
+    const parts = koord.split("$").filter(Boolean);
+    const westPart = parts.find((p) => p.startsWith("a"));
+    const ostPart = parts.find((p) => p.startsWith("b"));
+    const nordPart = parts.find((p) => p.startsWith("c"));
+    const suedPart = parts.find((p) => p.startsWith("d"));
 
-  await db.run(
-    `INSERT OR IGNORE INTO maps (idn, titel, jahr, massstab, west, ost, nord, sued)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [idn, titel, jahr, massstab, west, ost, nord, sued]
-  );
+    const west = westPart ? Number(westPart.slice(1)) : null;
+    const ost = ostPart ? Number(ostPart.slice(1)) : null;
+    const nord = nordPart ? Number(nordPart.slice(1)) : null;
+    const sued = suedPart ? Number(suedPart.slice(1)) : null;
+
+    await db.run(
+      `INSERT OR IGNORE INTO maps (idn, titel, jahr, massstab, west, ost, nord, sued)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [idn, titel, Number(jahr), massstab, west, ost, nord, sued]
+    );
+  }
 }
+
+async function importPoints() {
+  const csvPath = path.join(__dirname, "punktdaten.csv");
+  if (!fs.existsSync(csvPath)) {
+    console.error("CSV nicht gefunden:", csvPath);
+    process.exit(1);
+  }
+
+  const csv = fs.readFileSync(csvPath, "utf-8");
+  const lines = csv.split(/\r?\n/).slice(1);
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+
+    const [idn, breitengrad, laengengrad, titel] = line.split(";");
+    if (!idn || !breitengrad || !laengengrad) continue;
+
+    const latitude = parseCoordinate(breitengrad);
+    const longitude = parseCoordinate(laengengrad);
+    if (latitude === null || longitude === null) continue;
+
+    await db.run(
+      `INSERT OR IGNORE INTO points (idn, titel, breitengrad, laengengrad)
+       VALUES (?, ?, ?, ?)`,
+      [idn, titel, latitude, longitude]
+    );
+  }
+}
+
+await importMaps();
+await importPoints();
 
 console.log("Import fertig");
 process.exit(0);

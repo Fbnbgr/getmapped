@@ -9,18 +9,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const db = await open({
-  filename: "./backend/data/maps.db",
-  driver: sqlite3.Database
-});
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const db = await open({
+  filename: path.join(__dirname, "data", "maps.db"),
+  driver: sqlite3.Database
+});
 
 app.use(express.static(path.join(__dirname, "../frontend")));
 
 app.get("/api/maps", async (req, res) => {
   const rows = await db.all("SELECT * FROM maps");
+  res.json(rows);
+});
+
+app.get("/api/points", async (req, res) => {
+  const rows = await db.all("SELECT * FROM points");
   res.json(rows);
 });
 
