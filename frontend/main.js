@@ -189,7 +189,11 @@ let hoveredFeature = null;
 map.on("pointermove", function (evt) {
   if (evt.dragging) return;
 
-  const feature = map.forEachFeatureAtPixel(evt.pixel, f => f, { hitTolerance: 5 });
+  const feature = map.forEachFeatureAtPixel(
+    evt.pixel,
+    (candidate) => candidate,
+    { hitTolerance: 5 }
+  );
 
   map.getTargetElement().style.cursor = feature ? "pointer" : "";
 
@@ -214,7 +218,7 @@ popupElement.style.borderRadius = "5px";
 const overlay = new ol.Overlay({
   element: popupElement,
   positioning: "bottom-center",
-  stopEvent: false,
+  stopEvent: true,
   offset: [0, -10]
 });
 
@@ -242,7 +246,12 @@ function buildPopupContent(feature) {
 }
 
 map.on("click", function (evt) {
-  const feature = map.forEachFeatureAtPixel(evt.pixel, f => f);
+  const feature = map.forEachFeatureAtPixel(
+    evt.pixel,
+    (candidate) => candidate,
+    { hitTolerance: 5 }
+  );
+
   if (feature) {
     popupElement.innerHTML = buildPopupContent(feature);
     overlay.setPosition(evt.coordinate);
