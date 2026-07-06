@@ -64,6 +64,8 @@ pointLayer.setStyle(defaultPointStyle);
 // Range Slider
 const yearSlider = document.getElementById("year-slider");
 const yearValueLabel = document.getElementById("year-value");
+const toggleMaps = document.getElementById("toggle-maps");
+const togglePoints = document.getElementById("toggle-points");
 
 noUiSlider.create(yearSlider, {
   start: [1700, 2026],
@@ -154,6 +156,7 @@ function applyFilters() {
         const titel = (f.get("titel") || "").toLowerCase();
 
         const visible =
+          toggleMaps.checked &&
           jahr >= minYear &&
           jahr <= maxYear &&
           titel.includes(filterText);
@@ -165,7 +168,7 @@ function applyFilters() {
 
     allPointFeatures.forEach(f => {
         const titel = (f.get("titel") || "").toLowerCase();
-        const visible = titel.includes(filterText);
+        const visible = togglePoints.checked && titel.includes(filterText);
 
         f.setStyle(visible ? null : new ol.style.Style(null));
 
@@ -179,9 +182,9 @@ function applyFilters() {
 // Slider: reagiert auf Update
 yearSlider.noUiSlider.on("update", applyFilters);
 
-// Textinput: reagiert auf Eingabe
 document.getElementById("filter-input").addEventListener("input", applyFilters);
-
+toggleMaps.addEventListener("change", applyFilters);
+togglePoints.addEventListener("change", applyFilters);
 
 // Hover-Effekt
 let hoveredFeature = null;
@@ -191,7 +194,13 @@ map.on("pointermove", function (evt) {
 
   const feature = map.forEachFeatureAtPixel(
     evt.pixel,
-    (candidate) => candidate,
+    (candidate) => {
+      const kind = candidate.get("kind");
+      if ((kind === "map" && !toggleMaps.checked) || (kind === "point" && !togglePoints.checked)) {
+        return null;
+      }
+      return candidate;
+    },
     { hitTolerance: 5 }
   );
 
@@ -248,7 +257,13 @@ function buildPopupContent(feature) {
 map.on("click", function (evt) {
   const feature = map.forEachFeatureAtPixel(
     evt.pixel,
-    (candidate) => candidate,
+    (candidate) => {
+      const kind = candidate.get("kind");
+      if ((kind === "map" && !toggleMaps.checked) || (kind === "point" && !togglePoints.checked)) {
+        return null;
+      }
+      return candidate;
+    },
     { hitTolerance: 5 }
   );
 
