@@ -72,6 +72,8 @@ const SRU_BASE = "https://sru.bsz-bw.de/cbss!xpn=online";
 dotenv.config({ path: path.join(__dirname, ".env") });
 const SRU_USER = process.env.SRU_USER || "";
 const SRU_PASS = process.env.SRU_PASS || "";
+const SRU_DELAY_MS = Number.parseInt(process.env.SRU_DELAY_MS || "250", 10);
+const EFFECTIVE_SRU_DELAY_MS = Number.isFinite(SRU_DELAY_MS) && SRU_DELAY_MS > 0 ? SRU_DELAY_MS : 0;
 
 function buildSruUrl(ppn) {
   const params = new URLSearchParams({
@@ -101,10 +103,70 @@ function extractSubfieldValue(df, code) {
   return null;
 }
 
+function parseCsvCells(line) {
+  return line
+    .replace(/^\uFEFF/, "")
+    .split(";")
+    .map((cell) => cell.trim());
+}
+
+function normalizeBoundingBox(west, ost, nord, sued) {
+  const westValue = Number.parseFloat(west);
+  const ostValue = Number.parseFloat(ost);
+  const nordValue = Number.parseFloat(nord);
+  const suedValue = Number.parseFloat(sued);
+
+  const normalizedWest = Number.isFinite(westValue) ? westValue : null;
+  const normalizedOst = Number.isFinite(ostValue) ? ostValue : null;
+  const normalizedNord = Number.isFinite(nordValue) ? nordValue : null;
+  const normalizedSued = Number.isFinite(suedValue) ? suedValue : null;
+
+  if (normalizedWest === null || normalizedOst === null || normalizedNord === null || normalizedSued === null) {
+    return { west: normalizedWest, ost: normalizedOst, nord: normalizedNord, sued: normalizedSued };
+  }
+
+  if (normalizedWest > normalizedOst) {
+    return {
+      west: normalizedOst,
+      ost: normalizedWest,
+      nord: normalizedNord,
+      sued: normalizedSued
+    };
+  }
+
+  return {
+    west: normalizedWest,
+    ost: normalizedOst,
+    nord: normalizedNord,
+    sued: normalizedSued
+  };
+}
+
+function isMeaningfulMapExtent(west, ost, nord, sued) {
+  const westValue = Number.parseFloat(west);
+  const ostValue = Number.parseFloat(ost);
+  const nordValue = Number.parseFloat(nord);
+  const suedValue = Number.parseFloat(sued);
+
+  if (![westValue, ostValue, nordValue, suedValue].every(Number.isFinite)) return false;
+
+  const width = Math.abs(ostValue - westValue);
+  const height = Math.abs(nordValue - suedValue);
+
+  if (width <= 0 || height <= 0) return false;
+  if (width >= 140 || height >= 100 || width * height >= 8000) return false;
+
+  return true;
+}
+
 async function fetchSruRecord(ppn) {
+  let timeoutId = null;
   try {
     const url = buildSruUrl(ppn);
-    const res = await fetch(url);
+    const controller = new AbortController();
+    timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) {
       console.error("SRU request failed for", ppn, res.status);
       return null;
@@ -156,9 +218,25 @@ async function fetchSruRecord(ppn) {
 
     return { jahr, titel, herausgeber, massstab, west, ost, nord, sued };
   } catch (err) {
-    console.error('Error fetching/parsing SRU for', ppn, err && err.message);
+    if (err && err.name === "AbortError") {
+      console.warn("SRU request timed out for", ppn);
+    } else {
+      console.error('Error fetching/parsing SRU for', ppn, err && err.message);
+    }
     return null;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
+}
+
+async function mapExists(idn) {
+  const row = await db.get("SELECT 1 FROM maps WHERE idn = ? LIMIT 1", [idn]);
+  return Boolean(row);
+}
+
+async function pointExists(idn) {
+  const row = await db.get("SELECT 1 FROM points WHERE idn = ? LIMIT 1", [idn]);
+  return Boolean(row);
 }
 
 async function importMaps() {
@@ -171,21 +249,45 @@ async function importMaps() {
   const csv = fs.readFileSync(csvPath, "utf-8");
   const lines = csv.split(/\r?\n/).slice(1);
 
-  for (const line of lines) {
+  let processedCount = 0;
+  for (const [index, line] of lines.entries()) {
     if (!line.trim()) continue;
-    const [idn] = line.split(";");
-    if (!idn) continue;
+
+    const [idn] = parseCsvCells(line);
+    if (!idn || /^idn$/i.test(idn)) continue;
+
+    processedCount += 1;
+
+    if (await mapExists(idn)) {
+      console.log(`[import] ID ${idn} bereits in maps vorhanden – überspringe`);
+      continue;
+    }
 
     const rec = await fetchSruRecord(idn);
+
+    if (processedCount % 100 === 0) {
+      console.log(`[import] ${processedCount} Karten verarbeitet`);
+    }
+
+    if (EFFECTIVE_SRU_DELAY_MS > 0 && index < lines.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, EFFECTIVE_SRU_DELAY_MS));
+    }
     if (!rec) {
       console.warn('Keine SRU-Daten für', idn, '- überspringe');
       continue;
     }
 
+    if (!isMeaningfulMapExtent(rec.west, rec.ost, rec.nord, rec.sued)) {
+      console.log(`[import] Überspringe ${idn} wegen unvollständiger oder zu großer Ausdehnung`);
+      continue;
+    }
+
+    const normalizedBox = normalizeBoundingBox(rec.west, rec.ost, rec.nord, rec.sued);
+
     await db.run(
       `INSERT OR IGNORE INTO maps (idn, titel, herausgeber, jahr, massstab, west, ost, nord, sued)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [idn, rec.titel || null, rec.herausgeber || null, rec.jahr ? Number(rec.jahr) : null, rec.massstab || null, rec.west, rec.ost, rec.nord, rec.sued]
+      [idn, rec.titel || null, rec.herausgeber || null, rec.jahr ? Number(rec.jahr) : null, rec.massstab || null, normalizedBox.west, normalizedBox.ost, normalizedBox.nord, normalizedBox.sued]
     );
   }
 }
@@ -203,8 +305,13 @@ async function importPoints() {
   for (const line of lines) {
     if (!line.trim()) continue;
 
-    const [idn, breitengrad, laengengrad, titel] = line.split(";");
-    if (!idn || !breitengrad || !laengengrad) continue;
+    const [idn, breitengrad, laengengrad, titel] = parseCsvCells(line);
+    if (!idn || !breitengrad || !laengengrad || /^idn$/i.test(idn)) continue;
+
+    if (await pointExists(idn)) {
+      console.log(`[import] ID ${idn} bereits in points vorhanden – überspringe`);
+      continue;
+    }
 
     const latitude = parseCoordinate(breitengrad);
     const longitude = parseCoordinate(laengengrad);

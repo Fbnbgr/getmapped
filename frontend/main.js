@@ -86,6 +86,48 @@ noUiSlider.create(yearSlider, {
 let allMapFeatures = [];
 let allPointFeatures = [];
 
+function normalizeBoundingBox(west, ost, nord, sued) {
+  const westValue = Number(west);
+  const ostValue = Number(ost);
+  const nordValue = Number(nord);
+  const suedValue = Number(sued);
+
+  if (![westValue, ostValue, nordValue, suedValue].every(Number.isFinite)) {
+    return null;
+  }
+
+  const minX = Math.min(westValue, ostValue);
+  const maxX = Math.max(westValue, ostValue);
+  const minY = Math.min(suedValue, nordValue);
+  const maxY = Math.max(suedValue, nordValue);
+
+  return [minX, minY, maxX, maxY];
+}
+
+function isMeaningfulMapExtent(item) {
+  const west = Number(item.west);
+  const ost = Number(item.ost);
+  const nord = Number(item.nord);
+  const sued = Number(item.sued);
+
+  if (![west, ost, nord, sued].every(Number.isFinite)) {
+    return false;
+  }
+
+  const width = Math.abs(ost - west);
+  const height = Math.abs(nord - sued);
+
+  if (width <= 0 || height <= 0) {
+    return false;
+  }
+
+  if (width >= 140 || height >= 100 || width * height >= 8000) {
+    return false;
+  }
+
+  return true;
+}
+
 // Fetch + Features erzeugen
 Promise.all([
   fetch("http://localhost:3000/api/maps").then(res => res.json()),
@@ -96,8 +138,17 @@ Promise.all([
     console.log("Anzahl Punkte vom Server:", pointData.length);
 
     mapData.forEach(item => {
+      if (!isMeaningfulMapExtent(item)) {
+        return;
+      }
+
+      const normalizedExtent = normalizeBoundingBox(item.west, item.ost, item.nord, item.sued);
+      if (!normalizedExtent) {
+        return;
+      }
+
       const extent = ol.proj.transformExtent(
-        [item.west, item.sued, item.ost, item.nord],
+        normalizedExtent,
         "EPSG:4326",
         "EPSG:3857"
       );

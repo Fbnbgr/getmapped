@@ -17,11 +17,36 @@ const db = await open({
   driver: sqlite3.Database
 });
 
+function isMeaningfulMapExtent(row) {
+  const west = Number(row.west);
+  const ost = Number(row.ost);
+  const nord = Number(row.nord);
+  const sued = Number(row.sued);
+
+  if (![west, ost, nord, sued].every(Number.isFinite)) {
+    return false;
+  }
+
+  const width = Math.abs(ost - west);
+  const height = Math.abs(nord - sued);
+
+  if (width <= 0 || height <= 0) {
+    return false;
+  }
+
+  if (width >= 140 || height >= 100 || width * height >= 8000) {
+    return false;
+  }
+
+  return true;
+}
+
 app.use(express.static(path.join(__dirname, "../frontend")));
 
 app.get("/api/maps", async (req, res) => {
   const rows = await db.all("SELECT * FROM maps");
-  res.json(rows);
+  const filteredRows = rows.filter(isMeaningfulMapExtent);
+  res.json(filteredRows);
 });
 
 app.get("/api/points", async (req, res) => {

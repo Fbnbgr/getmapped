@@ -1,8 +1,5 @@
-# Ignore all files in the data directory
-/backend/data/*
-
-# Backend env
+/backend/data/kartendaten.csv
+backend/data/maps.db
 /backend/.env
-
 /backend/node_modules
 /backend/show_db.js
