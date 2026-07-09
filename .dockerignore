@@ -1,6 +1,10 @@
 # Ignore large data files so Docker build context stays small
 data/
 backend/data/
+backend/show_db.js
+
+# Avoid copying local node_modules (Windows) into image
+backend/node_modules
 
 # Ignore common large RDF formats that shouldn't be in the build context
 *.nt

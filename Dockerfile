@@ -13,6 +13,7 @@ WORKDIR /app
 
 COPY --from=builder /app/backend/node_modules ./backend/node_modules
 COPY backend ./backend
+COPY --from=builder /app/backend/node_modules ./backend/node_modules
 COPY frontend ./frontend
 
 RUN chmod +x backend/start.sh

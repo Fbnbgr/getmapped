@@ -1,5 +1,8 @@
 # Ignore all files in the data directory
-data/*
+/backend/data/*
 
-# Allow a placeholder so the empty directory can be kept in the repo if desired
-!/data/.gitkeep
+# Backend env
+/backend/.env
+
+/backend/node_modules
+/backend/show_db.js
