@@ -230,8 +230,35 @@ function applyFilters() {
     document.getElementById("counter").textContent = `${visibleCount} / ${allMapFeatures.length + allPointFeatures.length}`;
 }
 
+// Eingabefelder für Jahr
+const yearFromInput = document.getElementById("year-from");
+const yearToInput = document.getElementById("year-to");
+
 // Slider: reagiert auf Update
-yearSlider.noUiSlider.on("update", applyFilters);
+yearSlider.noUiSlider.on("update", function(values) {
+  const minYear = Math.round(values[0]);
+  const maxYear = Math.round(values[1]);
+  yearFromInput.value = minYear;
+  yearToInput.value = maxYear;
+  applyFilters();
+});
+
+// Eingabefelder: reagieren auf Änderung
+yearFromInput.addEventListener("change", function() {
+  const minYear = parseInt(this.value) || 1500;
+  const maxYear = parseInt(yearToInput.value) || 2026;
+  if (minYear <= maxYear) {
+    yearSlider.noUiSlider.set([minYear, maxYear]);
+  }
+});
+
+yearToInput.addEventListener("change", function() {
+  const minYear = parseInt(yearFromInput.value) || 1500;
+  const maxYear = parseInt(this.value) || 2026;
+  if (minYear <= maxYear) {
+    yearSlider.noUiSlider.set([minYear, maxYear]);
+  }
+});
 
 document.getElementById("filter-input").addEventListener("input", applyFilters);
 toggleMaps.addEventListener("change", applyFilters);

@@ -8,5 +8,6 @@ services:
       - "3000:3000"
     volumes:
       - ./backend/data:/app/backend/data
-      - ./backend/daten.csv:/app/backend/daten.csv
     restart: unless-stopped
+    environment:
+      - SKIP_IMPORT=true

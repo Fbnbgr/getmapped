@@ -69,7 +69,12 @@ function parseCoordinate(value) {
 
 const SRU_BASE = "https://sru.bsz-bw.de/cbss!xpn=online";
 // Load secrets from backend/.env if present
-dotenv.config({ path: path.join(__dirname, ".env") });
+const envPath = path.join(__dirname, ".env");
+if (!fs.existsSync(envPath)) {
+  console.error("Error: .env file not found at", envPath);
+  process.exit(1);
+}
+dotenv.config({ path: envPath });
 const SRU_USER = process.env.SRU_USER || "";
 const SRU_PASS = process.env.SRU_PASS || "";
 const SRU_DELAY_MS = Number.parseInt(process.env.SRU_DELAY_MS || "250", 10);
