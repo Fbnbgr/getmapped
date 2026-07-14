@@ -54,6 +54,31 @@ app.get("/api/points", async (req, res) => {
   res.json(rows);
 });
 
+app.get("/api/points-with-authors", async (req, res) => {
+  const points = await db.all("SELECT * FROM points");
+  const result = [];
+  for (const point of points) {
+    const authors = await db.all(
+      "SELECT autor FROM point_authors WHERE point_id = ? ORDER BY id",
+      [point.id]
+    );
+    result.push({
+      ...point,
+      autoren: authors.map(a => a.autor)
+    });
+  }
+  res.json(result);
+});
+
+app.get("/api/point/:id/authors", async (req, res) => {
+  const { id } = req.params;
+  const authors = await db.all(
+    "SELECT autor FROM point_authors WHERE point_id = ? ORDER BY id",
+    [id]
+  );
+  res.json(authors.map(a => a.autor));
+});
+
 app.get("/api/maps/by-year", async (req, res) => {
   const { from, to } = req.query;
   const rows = await db.all(

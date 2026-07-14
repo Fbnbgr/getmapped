@@ -36,7 +36,17 @@ await db.exec(`
     idn TEXT UNIQUE,
     titel TEXT,
     breitengrad REAL,
-    laengengrad REAL
+    laengengrad REAL,
+    fundstelle TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS point_authors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    point_id INTEGER NOT NULL,
+    idn TEXT NOT NULL,
+    autor TEXT NOT NULL,
+    FOREIGN KEY (point_id) REFERENCES points(id),
+    UNIQUE (point_id, autor)
   )
 `);
 
@@ -70,11 +80,12 @@ function parseCoordinate(value) {
 const SRU_BASE = "https://sru.bsz-bw.de/cbss!xpn=online";
 // Load secrets from backend/.env if present
 const envPath = path.join(__dirname, ".env");
-if (!fs.existsSync(envPath)) {
-  console.error("Error: .env file not found at", envPath);
-  process.exit(1);
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+  console.log("[import] .env geladen");
+} else {
+  console.warn("[import] Warnung: .env nicht gefunden. Verwende Umgebungsvariablen oder Defaults.");
 }
-dotenv.config({ path: envPath });
 const SRU_USER = process.env.SRU_USER || "";
 const SRU_PASS = process.env.SRU_PASS || "";
 const SRU_DELAY_MS = Number.parseInt(process.env.SRU_DELAY_MS || "250", 10);
@@ -109,10 +120,26 @@ function extractSubfieldValue(df, code) {
 }
 
 function parseCsvCells(line) {
-  return line
-    .replace(/^\uFEFF/, "")
-    .split(";")
-    .map((cell) => cell.trim());
+  // Handle CSV with commas, respecting quoted fields
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim().replace(/^"?(.*?)"?$/, '$1'));
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  
+  result.push(current.trim().replace(/^"?(.*?)"?$/, '$1'));
+  return result;
 }
 
 function normalizeBoundingBox(west, ost, nord, sued) {
@@ -244,7 +271,7 @@ async function pointExists(idn) {
   return Boolean(row);
 }
 
-async function importMaps() {
+async function importMapsData() {
   const csvPath = path.join(__dirname, "data/kartendaten.csv");
   if (!fs.existsSync(csvPath)) {
     console.error("CSV nicht gefunden:", csvPath);
@@ -297,7 +324,95 @@ async function importMaps() {
   }
 }
 
-async function importPoints() {
+async function fetchSruPointRecord(ppn) {
+  let timeoutId = null;
+  try {
+    const url = buildSruUrl(ppn);
+    const controller = new AbortController();
+    timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) {
+      console.error("SRU request failed for point", ppn, res.status);
+      return null;
+    }
+    const txt = await res.text();
+    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '', textNodeName: 'text' });
+    const obj = parser.parse(txt);
+
+    // try to locate the datafield array
+    let datafields = null;
+    try {
+      const resp = obj['zs:searchRetrieveResponse'] || obj['searchRetrieveResponse'] || obj;
+      const records = resp['zs:records'] || resp['records'] || resp;
+      const record = (records && (records['zs:record'] || records['record'])) || resp['zs:record'] || resp['record'];
+      const recordData = record && (record['zs:recordData'] || record['recordData']);
+      const rec = recordData && (recordData.record || recordData);
+      datafields = rec && rec.datafield;
+    } catch (e) {
+      datafields = null;
+    }
+
+    if (!datafields) return null;
+
+    const dfs = Array.isArray(datafields) ? datafields : [datafields];
+    const getDf = (tag) => dfs.find(d => (d.tag ?? d['@_tag'] ?? d[''] ?? '').toString() === tag);
+
+    // Extract titel
+    const titel = extractSubfieldValue(getDf('021A'), 'a') || extractSubfieldValue(getDf('021A'), 'A') || extractSubfieldValue(getDf('021A'), '');
+
+    // Extract authors (from 029A Verfasser or 029F Körperschaft)
+    const autoren = [];
+    const collectAuthors = (tag) => {
+      const df = getDf(tag);
+      if (!df) return;
+      const sub = df.subfield;
+      const items = Array.isArray(sub) ? sub : [sub];
+      for (const s of items) {
+        const c = s.code ?? s['@_code'] ?? s['code'];
+        const val = s.text ?? s['#text'] ?? s;
+        if (!c || !val) continue;
+        const v = (typeof val === 'object') ? (val['#text'] || val['text']) : val;
+        if (c === '8' || c === 'a' || c === '4') {
+          const author = String(v).trim();
+          if (author && author.length > 0) {
+            // Split multiple authors if separated by semicolon or similar
+            author.split(/[;,]/).forEach(a => {
+              const trimmed = a.trim();
+              if (trimmed && !autoren.includes(trimmed)) {
+                autoren.push(trimmed);
+              }
+            });
+          }
+        }
+      }
+    };
+    collectAuthors('029A');
+    collectAuthors('029F');
+    collectAuthors('100');
+    collectAuthors('700');
+
+    // Extract fundstelle (attempt various fields)
+    let fundstelle = null;
+    const fundDF = getDf('016') || getDf('013D') || getDf('560');
+    if (fundDF) {
+      fundstelle = extractSubfieldValue(fundDF, 'a') || extractSubfieldValue(fundDF, '8') || extractSubfieldValue(fundDF, '');
+    }
+
+    return { titel, autoren: autoren.filter(a => a.length > 0), fundstelle };
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      console.warn("SRU point request timed out for", ppn);
+    } else {
+      console.error('Error fetching/parsing SRU for point', ppn, err && err.message);
+    }
+    return null;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+async function importPointsData() {
   const csvPath = path.join(__dirname, "data/punktdaten.csv");
   if (!fs.existsSync(csvPath)) {
     console.error("CSV nicht gefunden:", csvPath);
@@ -307,31 +422,100 @@ async function importPoints() {
   const csv = fs.readFileSync(csvPath, "utf-8");
   const lines = csv.split(/\r?\n/).slice(1);
 
-  for (const line of lines) {
+  let processedCount = 0;
+  for (const [index, line] of lines.entries()) {
     if (!line.trim()) continue;
 
-    const [idn, breitengrad, laengengrad, titel] = parseCsvCells(line);
+    const [idn, breitengrad, laengengrad] = parseCsvCells(line);
     if (!idn || !breitengrad || !laengengrad || /^idn$/i.test(idn)) continue;
 
+    processedCount += 1;
+
     if (await pointExists(idn)) {
-      console.log(`[import] ID ${idn} bereits in points vorhanden – überspringe`);
+      console.log(`[import] Point ID ${idn} bereits vorhanden – überspringe`);
       continue;
     }
 
     const latitude = parseCoordinate(breitengrad);
     const longitude = parseCoordinate(laengengrad);
-    if (latitude === null || longitude === null) continue;
+    if (latitude === null || longitude === null) {
+      console.warn(`[import] Ungültige Koordinaten für ${idn}: ${breitengrad}, ${laengengrad}`);
+      continue;
+    }
 
-    await db.run(
-      `INSERT OR IGNORE INTO points (idn, titel, breitengrad, laengengrad)
-       VALUES (?, ?, ?, ?)`,
-      [idn, titel, latitude, longitude]
-    );
+    const rec = await fetchSruPointRecord(idn);
+
+    if (processedCount % 50 === 0) {
+      console.log(`[import] ${processedCount} Punkte verarbeitet`);
+    }
+
+    if (EFFECTIVE_SRU_DELAY_MS > 0 && index < lines.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, EFFECTIVE_SRU_DELAY_MS));
+    }
+
+    let result = null;
+    try {
+      result = await db.run(
+        `INSERT INTO points (idn, titel, breitengrad, laengengrad, fundstelle)
+         VALUES (?, ?, ?, ?, ?)`,
+        [idn, rec?.titel || null, latitude, longitude, rec?.fundstelle || null]
+      );
+      if (verbose) {
+        console.log(`[import] Point ${idn} eingefügt mit ID ${result.lastID}`);
+      }
+    } catch (e) {
+      console.error(`[import] FEHLER beim Einfügen von Punkt ${idn}:`, e && e.message);
+      continue;
+    }
+
+    if (!rec || !rec.autoren || rec.autoren.length === 0) {
+      if (!rec) {
+        console.warn(`[import] Keine SRU-Daten für Punkt ${idn}`);
+      }
+      continue;
+    }
+
+    // Insert authors
+    const pointId = result.lastID;
+    for (const autor of rec.autoren) {
+      try {
+        await db.run(
+          `INSERT INTO point_authors (point_id, idn, autor)
+           VALUES (?, ?, ?)`,
+          [pointId, idn, autor]
+        );
+      } catch (e) {
+        console.warn(`[import] Fehler beim Speichern von Autor "${autor}" für Punkt ${idn}:`, e && e.message);
+      }
+    }
   }
 }
 
-await importMaps();
-await importPoints();
+// Parse CLI arguments
+const args = process.argv.slice(2);
+const importMaps = args.includes("--maps") || args.includes("--all") || args.length === 0;
+const importPoints = args.includes("--points") || args.includes("--all") || args.length === 0;
+const verbose = args.includes("--verbose");
 
-console.log("Import fertig");
+if (verbose) {
+  console.log("[import] CLI args:", { importMaps, importPoints, verbose });
+}
+
+// Run imports based on flags
+const startTime = Date.now();
+
+if (importMaps) {
+  console.log("[import] Starte Kartendaten-Import...");
+  await importMapsData();
+  console.log("[import] Kartendaten-Import abgeschlossen");
+}
+
+if (importPoints) {
+  console.log("[import] Starte Punktdaten-Import...");
+  await importPointsData();
+  console.log("[import] Punktdaten-Import abgeschlossen");
+}
+
+const duration = Math.round((Date.now() - startTime) / 1000);
+console.log(`[import] Import fertig (${duration}s)`);
 process.exit(0);

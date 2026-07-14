@@ -1,5 +1,7 @@
 /backend/data/kartendaten.csv
+/backend/data/punktdaten.csv
 backend/data/maps.db
 /backend/.env
 /backend/node_modules
 /backend/show_db.js
+/backend/check_db.js
