@@ -1,7 +1,11 @@
 /backend/data/kartendaten.csv
-/backend/data/punktdaten.csv
+/backend/data/punktedaten.csv
 backend/data/maps.db
 /backend/.env
 /backend/node_modules
 /backend/show_db.js
 /backend/check_db.js
+/backend/package-lock.json
+/backend/package.json
+package-lock.json
+backend/__pycache__
