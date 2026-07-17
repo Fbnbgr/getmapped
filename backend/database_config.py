@@ -6,9 +6,11 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+# path setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db = os.path.join(BASE_DIR, os.getenv("DB", "data/maps.db"))
 
+# table creation
 def database_configuration():
     with sqlite3.connect(db) as conn:
         cursor = conn.cursor()

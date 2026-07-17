@@ -2,10 +2,10 @@
 
 if [ "$SKIP_IMPORT" != "true" ]; then
   echo "Starte Datenimport..."
-  node backend/import.js || exit 1
+  python3 backend/import.py || exit 1
 else
   echo "Import übersprungen (SKIP_IMPORT=true)"
 fi
 
 echo "Starte Server..."
-node backend/server.js
+exec node backend/server.js

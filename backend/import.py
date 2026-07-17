@@ -8,6 +8,7 @@ import requests
 import database_config as db
 import time
 
+# load environment variables
 load_dotenv()
 
 # logger
@@ -19,13 +20,15 @@ SRU_BASE = "https://sru.bsz-bw.de/cbss!xpn=online"
 SRU_USER = os.getenv("SRU_USER")
 SRU_PASS = os.getenv("SRU_PASS")
 SRU_DELAY_MS = float(os.getenv("SRU_DELAY_MS", 0.25))
+import_flag = os.environ.get("SKIP_IMPORT", "false").lower()
 
 # path setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 kartenPath = os.path.join(BASE_DIR, os.getenv("kartenPath", "data/kartendaten.csv"))
 punktePath = os.path.join(BASE_DIR, os.getenv("punktePath", "data/punktedaten.csv"))
 
-def fetchSRURecord(ppn):
+# get XML-Record from SRU API from BSZ
+def fetch_SRU_record(ppn):
     params = {
         "version": "1.1",
         "operation": "searchRetrieve",
@@ -41,27 +44,26 @@ def fetchSRURecord(ppn):
     time.sleep(SRU_DELAY_MS)
     return response.content
 
-def mapSizeCheck():
-    return
-
+# main function: imports map data and points data and imports them to the database if not already existing
 def importMapsData():
-    # import csv kartendaten
     logger.info("Starte mit dem Laden der Kartendaten")
-    if kartenPath:
+    # Karten
+    if kartenPath and import_flag in ("maps", "false"):
         with open(kartenPath, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f, delimiter=",")
             counter = 0
             for zeile in reader:
                 # check, ob Datensatz bereits existiert
                 if not db.database_entry_exists(zeile["idn"], None, None):
-                    xml_from_sru = fetchSRURecord(zeile["idn"])
+                    xml_from_sru = fetch_SRU_record(zeile["idn"])
                     parsed_data = parse_pica_record_maps(xml_from_sru)
                     db.write_to_table_maps(parsed_data)
                     counter += 1
             logger.info(f"{counter} Karten-IDNs wurden verarbeitet")
     else:
         logger.info("Kartenpfad nicht vorhanden.")
-    if punktePath:
+    # Punkte
+    if punktePath and import_flag in ("points", "false"):
         logger.info("Starte mit dem Laden der Punktdaten")
         with open(punktePath, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f, delimiter=",")
@@ -69,7 +71,7 @@ def importMapsData():
             for zeile in reader:
                 # check, ob Datensatz bereits existiert
                 if not db.database_entry_exists(zeile["idn"], zeile["Breitengrad"], zeile["Längengrad"]):
-                    xml_from_sru = fetchSRURecord(zeile["idn"])
+                    xml_from_sru = fetch_SRU_record(zeile["idn"])
                     parsed_data = parse_pica_record_points(xml_from_sru)
                     parsed_data["breitengrad"] = zeile["Breitengrad"]
                     parsed_data["laengengrad"] = zeile["Längengrad"]
@@ -81,8 +83,11 @@ def importMapsData():
     logger.info("Import abgeschlossen hurray")
     return
 
+# parser for XML file to db ready Dict
 def parse_pica_record_points(xml):
     tree = etree.fromstring(xml)
+
+    # zu extrahierende Felder
     FIELD_MAP = {
         ("003@", "00"): "idn",
         ("021A", "00"): "titel",  
@@ -143,10 +148,12 @@ def parse_pica_record_points(xml):
         
     return result
 
+# parser for XML file to db ready Dict
 def parse_pica_record_maps(xml):
     # Filter nach idn (003@/00.0), Titel (021A/00.a), Herausgeber (028A.8, 029A.8), Jahr (011@/00.a), Maßstab (035E/00.a), Koordinaten (west, ost, nord, sued, 035G/00.a-d)
     tree = etree.fromstring(xml)
 
+    # zu extrahierende Felder
     FIELD_MAP = {
         ("003@", "00"): "idn",
         ("021A", "00"): "titel",
@@ -214,7 +221,8 @@ if __name__ == "__main__":
     importMapsData()
 
     #idn = 1618965956
-    #xml_from_sru = fetchSRURecord(idn)
+    #xml_from_sru = fetch_SRU_record
+    #(idn)
     #parsed_data = parse_pica_record_maps(xml_from_sru)
     #print(parsed_data)
     # db.write_to_table_maps(parsed_data)

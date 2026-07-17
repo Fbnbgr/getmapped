@@ -1,19 +1,24 @@
-# Stage 1: Build
-FROM node:20 as builder
-
-WORKDIR /app
-
-COPY backend/package*.json ./backend/
-RUN cd backend && npm install
-
-# Stage 2: Runtime
 FROM node:20-slim
 
 WORKDIR /app
 
-COPY --from=builder /app/backend/node_modules ./backend/node_modules
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 \
+      python3-pip \
+      python3-venv \
+      build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY backend/requirements.txt backend/
+RUN pip install --no-cache-dir -r backend/requirements.txt
+
+COPY backend/package*.json backend/
+RUN cd backend && npm install --omit=dev --build-from-source=sqlite3
+
 COPY backend ./backend
-COPY --from=builder /app/backend/node_modules ./backend/node_modules
 COPY frontend ./frontend
 
 RUN chmod +x backend/start.sh
