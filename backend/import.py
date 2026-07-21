@@ -60,8 +60,10 @@ def importMapsData():
                     db.write_to_table_maps(parsed_data)
                     counter += 1
             logger.info(f"{counter} Karten-IDNs wurden verarbeitet")
-    else:
+    elif not kartenPath:
         logger.info("Kartenpfad nicht vorhanden.")
+    elif import_flag == "points":
+        logger.info("Trigger für Kartenimport nicht gewählt.")
     # Punkte
     if punktePath and import_flag in ("points", "false"):
         logger.info("Starte mit dem Laden der Punktdaten")
@@ -78,8 +80,10 @@ def importMapsData():
                     db.write_to_table_points(parsed_data)
                     counter += 1
             logger.info(f"{counter} Punkt-IDNs wurden verarbeitet")
-    else:
+    elif not punktePath:
         logger.info("Punktepfad nicht vorhanden.")
+    elif import_flag == "maps":
+        logger.info("Trigger für Punkteimport nicht gewählt.")
     logger.info("Import abgeschlossen hurray")
     return
 

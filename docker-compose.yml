@@ -10,4 +10,4 @@ services:
       - ./backend/data:/app/backend/data
     restart: unless-stopped
     environment:
-      - SKIP_IMPORT=true
+      - SKIP_IMPORT=points
