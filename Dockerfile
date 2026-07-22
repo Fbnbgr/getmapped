@@ -18,8 +18,7 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend/package*.json backend/
 RUN cd backend && npm install --omit=dev --build-from-source=sqlite3
 
-COPY backend ./backend
-COPY frontend ./frontend
+COPY . .
 
 RUN chmod +x backend/start.sh
 
