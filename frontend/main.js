@@ -5,8 +5,14 @@ const mapLayer = new ol.layer.Vector({
   source: mapSource
 });
 
-const pointLayer = new ol.layer.Vector({
+// Cluster-Source
+const clusterSource = new ol.source.Cluster({
+  distance: 1, // sehr klein -> nur (fast) exakt gleiche Koordinaten clustern
   source: pointSource
+});
+
+const pointLayer = new ol.layer.Vector({
+  source: clusterSource
 });
 
 const map = new ol.Map({
@@ -58,8 +64,54 @@ const hoverPointStyle = new ol.style.Style({
   })
 });
 
+function clusterStyle(feature) {
+  const features = feature.get("features");
+  const size = features.length;
+
+  if (size === 1) {
+    return defaultPointStyle;
+  }
+
+  return new ol.style.Style({
+    image: new ol.style.Icon({
+      src: `data:image/svg+xml;charset=utf-8,${pinSvg}`,
+      anchor: [0.5, 1],
+      scale: 0.9
+    }),
+    text: new ol.style.Text({
+      text: String(size),
+      fill: new ol.style.Fill({ color: "#fff" }),
+      offsetY: -25,
+      font: "bold 12px sans-serif"
+    })
+  });
+}
+
+function hoverClusterStyle(feature) {
+  const features = feature.get("features");
+  const size = features.length;
+
+  if (size === 1) {
+    return hoverPointStyle;
+  }
+
+  return new ol.style.Style({
+    image: new ol.style.Icon({
+      src: `data:image/svg+xml;charset=utf-8,${pinSvg}`,
+      anchor: [0.5, 1],
+      scale: 1.05
+    }),
+    text: new ol.style.Text({
+      text: String(size),
+      fill: new ol.style.Fill({ color: "#fff" }),
+      offsetY: -30,
+      font: "bold 13px sans-serif"
+    })
+  });
+}
+
 mapLayer.setStyle(defaultMapStyle);
-pointLayer.setStyle(defaultPointStyle);
+pointLayer.setStyle(clusterStyle);
 
 // Range Slider
 const yearSlider = document.getElementById("year-slider");
@@ -82,7 +134,7 @@ noUiSlider.create(yearSlider, {
   }
 });
 
-// Alle Features zwischenspeichern
+// Alle Features zwischenspeichern (Rohdaten, unverändert)
 let allMapFeatures = [];
 let allPointFeatures = [];
 
@@ -202,6 +254,7 @@ function applyFilters() {
 
     let visibleCount = 0;
 
+    // Karten: Style-basiertes Ein-/Ausblenden bleibt wie bisher
     allMapFeatures.forEach(f => {
         const jahr = f.get("jahr");
         const titel = (f.get("titel") || "").toLowerCase();
@@ -217,14 +270,16 @@ function applyFilters() {
         if (visible) visibleCount++;
     });
 
-    allPointFeatures.forEach(f => {
+    // Punkte: Cluster-Source neu befüllen statt einzelner setStyle-Aufrufe,
+    // da Clustering auf den tatsächlich in pointSource enthaltenen Features basiert.
+    const visiblePointFeatures = allPointFeatures.filter(f => {
         const titel = (f.get("titel") || "").toLowerCase();
-        const visible = togglePoints.checked && titel.includes(filterText);
-
-        f.setStyle(visible ? null : new ol.style.Style(null));
-
-        if (visible) visibleCount++;
+        return togglePoints.checked && titel.includes(filterText);
     });
+
+    pointSource.clear();
+    pointSource.addFeatures(visiblePointFeatures);
+    visibleCount += visiblePointFeatures.length;
 
     // Counter aktualisieren
     document.getElementById("counter").textContent = `${visibleCount} / ${allMapFeatures.length + allPointFeatures.length}`;
@@ -274,7 +329,11 @@ map.on("pointermove", function (evt) {
     evt.pixel,
     (candidate) => {
       const kind = candidate.get("kind");
-      if ((kind === "map" && !toggleMaps.checked) || (kind === "point" && !togglePoints.checked)) {
+      // Cluster-Features haben kein eigenes "kind" -> immer als Punkt behandeln
+      if (kind === "map" && !toggleMaps.checked) {
+        return null;
+      }
+      if (kind !== "map" && !togglePoints.checked) {
         return null;
       }
       return candidate;
@@ -285,11 +344,11 @@ map.on("pointermove", function (evt) {
   map.getTargetElement().style.cursor = feature ? "pointer" : "";
 
   if (hoveredFeature && hoveredFeature !== feature) {
-    hoveredFeature.setStyle(null);
+    hoveredFeature.setStyle(hoveredFeature.get("kind") === "map" ? null : null);
   }
 
   if (feature && hoveredFeature !== feature) {
-    feature.setStyle(feature.get("kind") === "point" ? hoverPointStyle : hoverMapStyle);
+    feature.setStyle(feature.get("kind") === "map" ? hoverMapStyle : hoverClusterStyle(feature));
   }
 
   hoveredFeature = feature;
@@ -312,14 +371,27 @@ const overlay = new ol.Overlay({
 map.addOverlay(overlay);
 
 function buildPopupContent(feature) {
-  const props = feature.getProperties();
+  const clustered = feature.get("features");
+
+  if (clustered && clustered.length > 1) {
+    let content = `<strong>${clustered.length} Einträge an diesem Ort</strong><br><ul style="margin:4px 0; padding-left:16px;">`;
+    clustered.forEach(f => {
+      const props = f.getProperties();
+      content += `<li><a href="https://katalog.skd.museum/Record/0-${props.idn}" target="_blank">${props.titel || "Ohne Titel"}</a></li>`;
+    });
+    content += `</ul>`;
+    return content;
+  }
+
+  const props = (clustered ? clustered[0] : feature).getProperties();
   const title = props.titel || "Ohne Titel";
-  const isPoint = props.kind === "point";
+  const isPoint = clustered ? true : props.kind === "point";
 
   let content = `<strong>${title}</strong><br>`;
 
   if (isPoint) {
-    const [lon, lat] = ol.proj.toLonLat(props.geometry.getCoordinates(), "EPSG:3857");
+    const geom = clustered ? clustered[0].getGeometry() : props.geometry;
+    const [lon, lat] = ol.proj.toLonLat(geom.getCoordinates());
     content += `Breitengrad: ${lat.toFixed(2)}<br>`;
     content += `Längengrad: ${lon.toFixed(2)}<br>`;
   } else {
@@ -337,7 +409,10 @@ map.on("click", function (evt) {
     evt.pixel,
     (candidate) => {
       const kind = candidate.get("kind");
-      if ((kind === "map" && !toggleMaps.checked) || (kind === "point" && !togglePoints.checked)) {
+      if (kind === "map" && !toggleMaps.checked) {
+        return null;
+      }
+      if (kind !== "map" && !togglePoints.checked) {
         return null;
       }
       return candidate;
@@ -352,4 +427,3 @@ map.on("click", function (evt) {
     overlay.setPosition(undefined);
   }
 });
-

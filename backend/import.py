@@ -226,8 +226,6 @@ if __name__ == "__main__":
     if not env_path.exists():
         logger.info(".env file nicht vorhanden")
     else:
-        # print(parse_pica_record_points(fetch_SRU_record("1976016401")))
-        # print(db.read_from_database(1975999460))
         importMapsData()
 
 
