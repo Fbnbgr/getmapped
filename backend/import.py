@@ -7,6 +7,7 @@ from lxml import etree
 import requests
 import database_config as db
 import time
+import re
 
 # load environment variables
 load_dotenv()
@@ -212,16 +213,33 @@ def parse_pica_record_maps(xml):
 
         elif target_key == "koordinaten":
             result["koordinaten"] = {
-                "west": subfields.get("a"),
-                "ost":  subfields.get("b"),
-                "nord": subfields.get("c"),
-                "sued": subfields.get("d"),
+                "west": parse_pica_coordinated(subfields.get("a")),
+                "ost":  parse_pica_coordinated(subfields.get("b")),
+                "nord": parse_pica_coordinated(subfields.get("c")),
+                "sued": parse_pica_coordinated(subfields.get("d")),
             }
     return result
+
+def parse_pica_coordinated(raw):
+    if not raw:
+        return None
+
+    match = re.match(r"^\s*([NSEWO])\s*(\d+)\s+(\d+)\s*$", raw.strip(), re.IGNORECASE)
+    if not match:
+        return None
+
+    hemisphere, degrees, minutes = match.groups()
+    value = int(degrees) + int(minutes) / 60
+
+    if hemisphere.upper() in ("S", "W"):
+        value = -value
+
+    return value
 
 if __name__ == "__main__":
     # setup
     logger.info(f"Los gehts...")
+    # print(db.read_from_database(1926268059))
     db.database_configuration()
     if not env_path.exists():
         logger.info(".env file nicht vorhanden")

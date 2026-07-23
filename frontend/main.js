@@ -2,7 +2,13 @@ const mapSource = new ol.source.Vector();
 const pointSource = new ol.source.Vector();
 
 const mapLayer = new ol.layer.Vector({
-  source: mapSource
+  source: mapSource,
+  // Große Kartenausschnitte zuerst zeichnen
+  renderOrder: (featureA, featureB) => {
+    const areaA = ol.extent.getArea(featureA.getGeometry().getExtent());
+    const areaB = ol.extent.getArea(featureB.getGeometry().getExtent());
+    return areaB - areaA; // absteigend: größte Fläche zuerst
+  }
 });
 
 // Cluster-Source
