@@ -26,6 +26,7 @@ import_flag = os.environ.get("SKIP_IMPORT", "false").lower()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 kartenPath = os.path.join(BASE_DIR, os.getenv("kartenPath", "data/kartendaten.csv"))
 punktePath = os.path.join(BASE_DIR, os.getenv("punktePath", "data/punktedaten.csv"))
+env_path = Path(BASE_DIR) / ".env"
 
 # get XML-Record from SRU API from BSZ
 def fetch_SRU_record(ppn):
@@ -220,16 +221,14 @@ def parse_pica_record_maps(xml):
 
 if __name__ == "__main__":
     # setup
-    logger.info("Los gehts...")
+    logger.info(f"Los gehts...")
     db.database_configuration()
-    importMapsData()
-
-    #idn = 1618965956
-    #xml_from_sru = fetch_SRU_record
-    #(idn)
-    #parsed_data = parse_pica_record_maps(xml_from_sru)
-    #print(parsed_data)
-    # db.write_to_table_maps(parsed_data)
+    if not env_path.exists():
+        logger.info(".env file nicht vorhanden")
+    else:
+        # print(parse_pica_record_points(fetch_SRU_record("1976016401")))
+        # print(db.read_from_database(1975999460))
+        importMapsData()
 
 
 

@@ -11,4 +11,4 @@ services:
       - /app/backend/node_modules
     restart: unless-stopped
     environment:
-      - SKIP_IMPORT=true
+      - SKIP_IMPORT=points
