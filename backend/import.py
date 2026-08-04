@@ -224,7 +224,8 @@ def parse_pica_coordinated(raw):
     if not raw:
         return None
 
-    match = re.match(r"^\s*([NSEWO])\s*(\d+)\s+(\d+)\s*$", raw.strip(), re.IGNORECASE)
+    COORD_PATTERN = re.compile(r"\A\[?\s*([NSEWO])\s*(\d+)\s+(\d+)\s*\]?\Z", re.IGNORECASE)
+    match = COORD_PATTERN.fullmatch(raw.strip())
     if not match:
         return None
 
@@ -239,7 +240,9 @@ def parse_pica_coordinated(raw):
 if __name__ == "__main__":
     # setup
     logger.info(f"Los gehts...")
-    # print(db.read_from_database(1926268059))
+    print((fetch_SRU_record(860962660)))
+    print(parse_pica_record_maps(fetch_SRU_record(860962660)))
+    # print(db.read_from_database(861032985))
     db.database_configuration()
     if not env_path.exists():
         logger.info(".env file nicht vorhanden")

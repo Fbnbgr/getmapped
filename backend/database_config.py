@@ -83,7 +83,7 @@ def write_to_table_points(data):
 def read_from_database(idn):
     with sqlite3.connect(db) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM points WHERE idn = ?", (idn, ))
+        cursor.execute("SELECT * FROM maps WHERE idn = ?", (idn, ))
         result = cursor.fetchall()
     return result
 
