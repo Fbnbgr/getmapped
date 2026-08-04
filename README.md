@@ -1,28 +1,28 @@
-# Kartenprojekt - Maps Application
+# Kartenprojekt - Kartenvisualisierung mit historischen Kartendaten
 
-Eine interaktive Karten-Anwendung mit OpenStreetMap, Kartenflächen aus historischen Kartendaten und zusätzlichen Punktmarkern für Orts- oder Objektinformationen.
+Eine interaktive Karten-Anwendung mit OpenStreetMap, historischen Kartenflächen und zusätzlichen Punktmarkern für Orte oder Objekte. Die Daten werden aus CSV-Dateien importiert, über eine Python-Import-Schicht angereichert und in einer SQLite-Datenbank gespeichert. Die Weboberfläche wird mit OpenLayers und einer Express-API bereitgestellt.
 
 ## Features
 
 - Interaktive OpenStreetMap-Karte im Frontend
 - Darstellung historischer Kartenflächen als Overlays
-- Zusätzliche Punktmarker in Form klassischer Nadeln
-- Filterung nach Jahr und Titeln
+- Punktmarker in Form klassischer Nadeln mit Clustering
+- Filterung nach Jahr, Titel und Layer-Anzeige
 - Popups mit Metadaten und Link zum Online-Katalog
 - REST-API für Karten- und Punktdaten
-- CSV-Import in eine SQLite-Datenbank
+- CSV-Import in SQLite inklusive Anreicherung über den SRU-Import des BSZ
 
 ## Schnellstart
 
 ### Voraussetzungen
 
 - Docker & Docker Compose
-- oder: Node.js 18+, npm
+- oder: Node.js 18+, npm, Python 3.10+, pip
 
 ### Mit Docker
 
 ```bash
-docker compose up -d
+docker compose up --build -d
 ```
 
 Die App ist dann verfügbar unter: http://localhost:3000
@@ -31,12 +31,25 @@ Die App ist dann verfügbar unter: http://localhost:3000
 
 ```bash
 cd backend
+pip install -r requirements.txt
 npm install
-node import.js
+python3 import.py
 node server.js
 ```
 
 Danach öffne: http://localhost:3000
+
+### Konfiguration
+
+Für den Import über den SRU-Service wird eine Datei mit Umgebungsvariablen benötigt. Eine Vorlage liegt als [backend/.env.example](backend/.env.example) vor.
+
+Beispiel:
+
+```bash
+SRU_USER=your-user
+SRU_PASS=your-password
+SRU_DELAY_MS=250ms
+```
 
 ## API-Endpoints
 
@@ -66,19 +79,15 @@ Parameter:
 
 Die Anwendung importiert zwei CSV-Dateien aus dem Backend-Ordner:
 
-- [backend/data/kartendaten.csv](backend/kartendaten.csv) für Kartenflächen
-- [backend/data/punktdaten.csv](backend/punktdaten.csv) für Punktmarker
+- [backend/data/kartendaten.csv](backend/data/kartendaten.csv) für Kartenflächen
+- [backend/data/punktedaten.csv](backend/data/punktedaten.csv) für Punktmarker
 
 ### Karten-CSV-Format
 
 ```text
-idn;koord;massstab;jahr;titel
-1931734666;$a13.68$b13.89$c51.12$d51.01;1:25000;1890;Topographische Karte Dresden
+idn
+1931734666
 ```
-
-Koordinatenformat:
-- `$a<west>$b<ost>$c<nord>$d<sued>`
-- Die Reihenfolge der Felder kann variieren, solange die Unterfelder korrekt zugeordnet sind.
 
 ### Punkt-CSV-Format
 
@@ -96,8 +105,9 @@ Die Werte werden in die Datenbank als Breitengrad und Längengrad übernommen un
 ```sql
 CREATE TABLE maps (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  idn TEXT UNIQUE,
+  idn INTEGER UNIQUE,
   titel TEXT,
+  herausgeber TEXT,
   jahr INTEGER,
   massstab TEXT,
   west REAL,
@@ -112,10 +122,13 @@ CREATE TABLE maps (
 ```sql
 CREATE TABLE points (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  idn TEXT UNIQUE,
+  idn INTEGER,
   titel TEXT,
+  jahr INTEGER,
   breitengrad REAL,
-  laengengrad REAL
+  laengengrad REAL,
+  fundstelle TEXT,
+  reihe TEXT
 );
 ```
 
@@ -124,12 +137,16 @@ CREATE TABLE points (
 ```text
 getmapped/
 ├── backend/
-│   ├── import.js              # CSV → SQLite Importer
+│   ├── import.py              # Python-Import und SRU-Anreicherung
+│   ├── import.js              # Legacy-Node-Import (nicht aktiv)
 │   ├── server.js              # Express-Backend und API
-│   ├── kartendaten.csv        # Karten-Daten
-│   ├── punktdaten.csv        # Punkt-Daten
-│   ├── package.json           # Abhängigkeiten
+│   ├── database_config.py     # SQLite-Tabellen und Datenbanklogik
+│   ├── package.json           # Node-Abhängigkeiten
+│   ├── requirements.txt       # Python-Abhängigkeiten
+│   ├── start.sh               # Startskript für Docker
 │   └── data/
+│       ├── kartendaten.csv    # Karten-Daten
+│       ├── punktedaten.csv    # Punkt-Daten
 │       └── maps.db            # SQLite-Datenbank
 ├── frontend/
 │   ├── index.html             # Hauptseite
@@ -155,7 +172,7 @@ kill -9 <PID>
 
 ```bash
 cd backend
-node import.js
+python3 import.py
 ```
 
 ### Datenbank neu aufbauen
@@ -163,7 +180,15 @@ node import.js
 ```bash
 cd backend
 rm -f data/maps.db
-node import.js
+python3 import.py
+```
+
+### Import auslösen
+
+```bash
+SKIP_IMPORT=false docker compose up -d
+SKIP_IMPORT=maps docker compose up -d
+SKIP_IMPORT=points docker compose up -d
 ```
 
 ## Deployment
